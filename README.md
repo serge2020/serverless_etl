@@ -59,10 +59,10 @@ The folders on the top of this page contain scripts that implement core function
 * **step_functions** JSON files with definitions of Step Function state machines. Their workflow graphs are shown below:
   * Tweet data loading to S3 (KinesisLandingStateMachine)
   
-  ![KinesisLandingStateMachine](https://github.com/serge2020/serverless_etl/blob/master/twitter-etl_sf-graph.svg)
+  ![KinesisLandingStateMachine](https://github.com/serge2020/serverless_etl/blob/master/twitter-etl_sf-graph.png)
   * Data processing and saving to Analytical layer and Quicksight (LandingAnalyticalStateMachine)
   
-  ![LandingAnalyticalStateMachine](https://github.com/serge2020/serverless_etl/blob/master/hashtags-proc_sf-graph.svg)
+  ![LandingAnalyticalStateMachine](https://github.com/serge2020/serverless_etl/blob/master/hashtags-proc_sf-graph.png)
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
