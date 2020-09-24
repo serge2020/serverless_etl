@@ -1,0 +1,108 @@
+{
+  "Comment": "Processing tweet-etl pipeline data to Staging then to Analytical layer and updating Qucksight dataset",
+  "StartAt": "DeleteStagingOld",
+  "States": {
+        "DeleteStagingOld": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "InputPath": "$",
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+              ],
+      "Next": "ProcessDataToStaging"
+    },
+    "ProcessDataToStaging": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "InputPath": "$",
+      "ResultPath": "$.logrecord.values",
+      "OutputPath": "$.logrecord",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "RunUpdateLogStaging"
+    },
+        "RunUpdateLogStaging": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "InputPath": "$",
+      "ResultPath": "$.logrecord.status",
+      "OutputPath": "$.logrecord",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+              ],
+      "Next": "LoadToAnalytical"
+        },
+    "LoadToAnalytical": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "InputPath": "$",
+      "ResultPath": "$.logrecord.values",
+      "OutputPath": "$.logrecord",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "RunUpdateLogAnalytical"
+    },
+    "RunUpdateLogAnalytical": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "InputPath": "$",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+              ],
+      "Next": "UpdateQuicksight"
+        },
+    "UpdateQuicksight": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    }
+  }
+}

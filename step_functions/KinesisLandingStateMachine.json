@@ -1,0 +1,87 @@
+{
+  "Comment": "Twitter data ETL pipeline",
+  "StartAt": "CreateDataStream",
+  "States": {
+    "CreateDataStream": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+              ],
+      "Next": "Parallel"
+    },
+    "Parallel": {
+      "Type": "Parallel",
+      "Next": "DeleteDataStream",
+      "Branches": [
+        {
+          "StartAt": "RunKinesisConsumer",
+          "States": {
+            "RunKinesisConsumer": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:arn-data",
+              "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+              ],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "wait_ten_seconds",
+          "States": {
+            "wait_ten_seconds": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "SendTweetsToDataStream"
+            },
+            "SendTweetsToDataStream": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:arn-data",
+              "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+              ],
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "DeleteDataStream": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:arn-data",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+              ],
+      "End": true
+    }
+  }
+}
