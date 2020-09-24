@@ -1,6 +1,6 @@
 # Serverless ETL Solution on AWS Cloud
 
-This project intends to demonstrate on a POC (proof-of-concept) level what it takes to create scalable, serverless and automated ETL solution on AWS Cloud.
+This project intends to demonstrate on a POC (proof-of-concept) level what it takes to create scalable, serverless and automated ETL solution on [AWS Cloud](https://aws.amazon.com).
 It doesn't have a goal to meet all requirements of production-grade application (for now), never the less this solution includes all typical stages of the data pipeline: from source data loading up to the dashboard visualistations.
 From the data subject perspective the solution analyses popularity of recent Twitter hashtags and text sentiment of the tweets in which they appears well as the users who have used them.   
 ## Table of Contents
@@ -22,6 +22,12 @@ Only serverless AWS services are used to build the project architecture that is 
   
 [Twitter Streaming API](https://developer.twitter.com/en/docs/tutorials/consuming-streaming-data) is used as the data source and since AWS Quicksight dashboards embedding is supported only in Enterprise Edition, Power BI dashboard is used for data visualisation.  
 Check out this dashboard with the latest hashtag data or proceed with solution architecture details!
+
+
+Overall project architechure is presented in the chart below.
+
+![serverless-etl-architecture](https://github.com/serge2020/serverless_etl/blob/master/twitter-etl_architecture.png)
+
 #### Data processing
 
 [AWS Lambda](https://aws.amazon.com/lambda/) functions are used to carry out all data processing stages and deploy the relevant AWS services at each stage:
@@ -41,21 +47,22 @@ The following AWS services are used for automated data processing:
 * **Athena table schema information** - [AWS Glue](https://aws.amazon.com/glue/) Data Catalog
 * **Error notifications** - [AWS CloudWatch](https://aws.amazon.com/cloudwatch/) Alert is triggered when State Machine run fails which in turn triggers [AWS SNS](https://aws.amazon.com/sns/) to send notification email
 
+
 ## TOP Hashtags dashboard
 dashboard with the latest hashtag data
 
 ## Repo structure
 
-The folders below contain scripts that implement core functionality of this solution:
+The folders on the top of this page contain scripts that implement core functionality of this solution:
 * **athena** Hive scripts used to create Athena tables
 * **lambda** Python code of the Lambda functions used in the project
 * **step_functions** JSON files with definitions of Step Function state machines. Their workflow graphs are shown below:
   * Tweet data loading to S3 (KinesisLandingStateMachine)
   
-  ![KinesisLandingStateMachine]()
+  ![KinesisLandingStateMachine](https://github.com/serge2020/serverless_etl/blob/master/twitter-etl_sf-graph.svg)
   * Data processing and saving to Analytical layer and Quicksight (LandingAnalyticalStateMachine)
   
-  ![LandingAnalyticalStateMachine]()
+  ![LandingAnalyticalStateMachine](https://github.com/serge2020/serverless_etl/blob/master/hashtags-proc_sf-graph.svg)
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
