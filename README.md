@@ -49,8 +49,7 @@ The following AWS services are used for automated data processing:
 
 
 ## TOP Hashtags dashboard
- \
-
+\
 [a few dashboards with some interesting hashtag data...](https://public.tableau.com/profile/sergejs1574#!/vizhome/hashtag_data/top_sentiment)
 
 ## Repo structure
