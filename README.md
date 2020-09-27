@@ -20,8 +20,8 @@ Only serverless AWS services are used to build the project architecture that is 
   1. Data processing activities
   2. Pipeline configuration, scheduling & monitoring activities
   
-[Twitter Streaming API](https://developer.twitter.com/en/docs/tutorials/consuming-streaming-data) is used as the data source and since AWS Quicksight dashboards embedding is supported only in Enterprise Edition, Power BI dashboard is used for data visualisation.  
-Check out this dashboard with the latest hashtag data or proceed with solution architecture details!
+**Data source:** [Twitter Streaming API](https://developer.twitter.com/en/docs/tutorials/consuming-streaming-data)
+**Visualisatons:** AWS Quicksight is integrated in the project architecture for this role. However, since dashboard embedding is supported only in Enterprise Edition, I'm using Tableau Public dashboards as a zero-cot proxy :).  Unfortunately, no automated data updates are available for this option, so the dashboard data is not quite up to date. Never the less, you can check out [here](https://public.tableau.com/profile/sergejs1574#!/vizhome/hashtag_data/top_sentiment) now or proceed with solution architecture details.
 
 
 Overall project architechure is presented in the chart below.
@@ -49,7 +49,9 @@ The following AWS services are used for automated data processing:
 
 
 ## TOP Hashtags dashboard
-dashboard with the latest hashtag data
+
+
+[a few dashboards with some interesting hashtag data...(https://public.tableau.com/profile/sergejs1574#!/vizhome/hashtag_data/top_sentiment)]
 
 ## Repo structure
 
