@@ -25,7 +25,8 @@ class MyStreamListener(tweepy.StreamListener):
         super().__init__()
 
     def on_status(self, status):
-        """ Function that performs multi step filtering of the tweet stream. It takes value of tweet record
+        """ Override of the StreamListener native function that receives tweet data from on_data - another native function
+         of this class. Function performs multi step filtering of the tweet stream. It takes value of tweet record
         :param status: "status" field as input value. Then it filters tweet records based on:
         1. If they are retweets
         2. If tweet language is English

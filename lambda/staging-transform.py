@@ -42,7 +42,23 @@ timezone = pytz.timezone(os.environ['TIME_ZONE'])
 time_horizon = int(os.environ['TIME_HORIZONT_HRS'])
 
 def lambda_handler(event, context):
+    def boto_safe_run(func):
+        """ decorator (higher order function) to handle errors using boto3 using ClientError and ParamValidationError error types
+        :param func: outer function to be passed to decorator
+        :return: executed inner function
+        """
+        def inner_function(*args, **kwargs):
+            # inner function that uses arguments of the outer function runs it applying error handling functionality
+            try:
+                return func(*args, *kwargs)
+            except ClientError as e:
+                print("AWS client returned error: ", e.response['Error']['Message'])
+                raise e
+            except ParamValidationError as e:
+                raise ValueError(f'The parameters you provided are incorrect: {e}')
+        return inner_function
     
+    @boto_safe_run
     def get_glue_schema(client, id, db, table, partitioned):
         """ function that retrieves table schema information from Glue Catalog. It requires the following input
         :param client: Glue client
@@ -52,37 +68,30 @@ def lambda_handler(event, context):
         :param partitioned: boolean variable indicating if the table is partitioned
         :return: list of table column names
         """
-        try:
-            # get table metadata from Glue Catalog
-            response_stg = client.get_table(CatalogId=id, DatabaseName=db, Name=table)
-            if partitioned:
-                col_list_stg = []
-                part_list = []
-                # get partition and column list from Glue Catalog
-                columns = response_stg['Table']['StorageDescriptor']['Columns']
-                part_columns = response_stg['Table']['PartitionKeys']
-                for col in columns:
-                    col_list_stg.append(col['Name'])
-        
-                for col in part_columns:
-                    part_list.append(col['Name'])
-        
-                col_list_stg += part_list
-            else:
-                # only get get column list from Glue Catalog
-                col_list_stg = []
-                columns = response_stg['Table']['StorageDescriptor']['Columns']
-                for col in columns:
-                    col_list_stg.append(col['Name'])
-        # boto3 error handling using ClientError and ParamValidationError errors.
-        except ClientError as e:
-            print("Glue client returned error: ", e.response['Error']['Message'])
-            raise e
-        except ParamValidationError as e:
-            raise ValueError(f'The parameters you provided are incorrect: {e}')
-        
+        # get table metadata from Glue Catalog
+        response_stg = client.get_table(CatalogId=id, DatabaseName=db, Name=table)
+        if partitioned:
+            col_list_stg = []
+            part_list = []
+            # get partition and column list from Glue Catalog
+            columns = response_stg['Table']['StorageDescriptor']['Columns']
+            part_columns = response_stg['Table']['PartitionKeys']
+            for col in columns:
+                col_list_stg.append(col['Name'])
+
+            for col in part_columns:
+                part_list.append(col['Name'])
+
+            col_list_stg += part_list
+        else:
+            # only get get column list from Glue Catalog
+            col_list_stg = []
+            columns = response_stg['Table']['StorageDescriptor']['Columns']
+            for col in columns:
+                col_list_stg.append(col['Name'])
         return col_list_stg
-    
+
+    @boto_safe_run
     def filter_s3_objs(client, bucket, prefix, tz, t_horizon):
         """ function that creates filtered file object list from S3 bucket using provided time range value
         :param client: S3 client
@@ -95,30 +104,23 @@ def lambda_handler(event, context):
         keys_filtered = []
         # get unfiltered object list
         from_hour = int(datetime.now(tz=tz).strftime("%H")) - t_horizon
-        try:
-            response = client.list_objects(
-                Bucket=bucket,
-                Prefix=prefix
-            )
-            objs = response["Contents"]
-            # filter objects by LastModified timestamp data
-            for ob in objs:
-                modified = ob.get("LastModified")
-                hour = modified.astimezone(timezone).strftime('%H')
-                if int(hour) >= from_hour:
-                    name = ob.get("Key")
-                    keys_filtered.append(name)
-        # boto3 error handling using ClientError and ParamValidationError errors.
-        except ClientError as e:
-            print("S3 returned error: ", e.response['Error']['Message'])
-            raise e
-        except ParamValidationError as e:
-            raise ValueError(f'The parameters you provided are incorrect: {e}')            
-                    
+        response = client.list_objects(
+            Bucket=bucket,
+            Prefix=prefix
+        )
+        objs = response["Contents"]
+        # filter objects by LastModified timestamp data
+        for ob in objs:
+            modified = ob.get("LastModified")
+            hour = modified.astimezone(timezone).strftime('%H')
+            if int(hour) >= from_hour:
+                name = ob.get("Key")
+                keys_filtered.append(name)
         return keys_filtered
-    
+
+    @boto_safe_run
     def load_from_s3(s3, bucket, file_keys, cols):
-        """ funstion that loads file objects from S3 using provided list of object keys and
+        """ function that loads file objects from S3 using provided list of object keys and
         saves them to a single Pandas dataframe
         :param s3: S3 client
         :param bucket: name of S3 bucket
@@ -129,19 +131,27 @@ def lambda_handler(event, context):
         df_list = []
         # iterate over object list and load files to memory
         for file in file_keys:
-            try:
-                body = s3.get_object(Bucket=bucket, Key=file)["Body"].read().decode('utf-8')
-            except ClientError as e:
-                print("S3 returned error: ", e.response['Error']['Message'])
-                raise e
-            except ParamValidationError as e:
-                raise ValueError(f'The parameters you provided are incorrect: {e}')    
+            body = s3.get_object(Bucket=bucket, Key=file)["Body"].read().decode('utf-8')
+
             # create single object dataframe and append it to the list of dataframes
             df_single = pd.read_csv(StringIO(body), names=cols)
             df_list.append(df_single)
         # create resulting dataframe from the list of dataframes
         return pd.concat(df_list, axis=0, ignore_index=True)
     
+    @boto_safe_run
+    def save_df_to_s3(df, s3_resource, bucket, filename):
+        """ function that saves contents of a dataframe to S3
+        :param df: source dataframe
+        :param s3_resource: S3 resource client
+        :param bucket: target bucket name
+        :param filename: target file key (name)
+        :return: None
+        """
+        csv_buffer = StringIO() # memory buffer to store dataframe data
+        df.to_csv(csv_buffer, header=False)
+        s3_resource.Object(bucket, filename).put(Body=csv_buffer.getvalue())
+
     def clean_tweet(string):
         """ function that cleans input string from symbols and abbreviations without verbal meaning, in order to use it
         for text sentiment analysis. It takes input
@@ -244,22 +254,9 @@ def lambda_handler(event, context):
     _df['day'] = _df.timestamp.apply(get_day)
 
     df = _df[new_cols].copy()
+    full_name = staging_path+staging_file+'_'+record_time+'.csv'
+    save_df_to_s3(df, s3, bucket_name, full_name)
     count_row = df.shape[0]
-    # save final dataframe as csv to memory buffer
-    csv_buffer = StringIO()
-    df.to_csv(csv_buffer, header=False, index=False)
-    log_record = ""
-    
-    try:
-        # save csv file to S3 bucket
-        s3.Object(bucket_name, staging_path+staging_file+'_'+record_time+'.csv').put(Body=csv_buffer.getvalue())
-        print(f"{count_row} records saved to Staging")
-        log_record = f"'{record_time}', '{target_db}.{target_table}', {count_row}, {get_year(record_time)}, {get_month(record_time)}, {get_day(record_time)}"
-    # boto3 error handling using ClientError and ParamValidationError errors.
-    except ClientError as e:
-        print("S3 put Object returned error: ", e.response['Error']['Message'])
-        raise e
-    except ParamValidationError as e:
-        raise ValueError(f'The parameters you provided are incorrect: {e}')
-    # return indicators of data processing to be used by update-data-log Lambda.
+    log_record = f"'{record_time}', '{target_db}.{target_table}', {count_row}, {get_year(record_time)}, {get_month(record_time)}, {get_day(record_time)}"
+
     return log_record

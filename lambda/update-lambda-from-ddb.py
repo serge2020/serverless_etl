@@ -24,6 +24,23 @@ client = boto3.client('lambda')
 
 def lambda_handler(event, context):
 
+    def boto_safe_run(func):
+        """ decorator (higher order function) to handle errors using boto3 using ClientError and ParamValidationError error types
+        :param func: outer function to be passed to decorator
+        :return: executed inner function
+        """
+        def inner_function(*args, **kwargs):
+            # inner function that uses arguments of the outer function runs it applying error handling functionality
+            try:
+                return func(*args, *kwargs)
+            except ClientError as e:
+                print("AWS client returned error: ", e.response['Error']['Message'])
+                raise e
+            except ParamValidationError as e:
+                raise ValueError(f'The parameters you provided are incorrect: {e}')
+        return inner_function
+
+    @boto_safe_run
     def get_ddb_item(tbl_name, region, key_name, item_name, ddb_r=None):
         """ function that loads loads item data from DynamoDB. Environmental variable data is located under
          'Variables' key, therefore it is used to retrieve the relevant data. It requires input
@@ -38,18 +55,13 @@ def lambda_handler(event, context):
             ddb_r = boto3.resource('dynamodb', region_name=region)
         # instantiate table object
         table = ddb_r.Table(tbl_name)
-        try:
-            # get item data from DynamoDB and parse data under 'Variables' key into json object
-            response = table.get_item(Key={key_name: item_name})
-            env = response['Item']['Variables'].replace("'", "\"")
-            env_dict = json.loads(env)
-        # boto3 error handling using ClientError.
-        except ClientError as e:
-            print(e.response['Error']['Message'])
-            raise ClientError
+        # get item data from DynamoDB and parse data under 'Variables' key into json object
+        response = table.get_item(Key={key_name: item_name})
+        env = response['Item']['Variables'].replace("'", "\"")
+        env_dict = json.loads(env)
         return env_dict
-    
-    
+
+    @boto_safe_run
     def update_lambda(name, params, l_client=None):
         """ function that updates environmental variables for Lambda function by function name. It tkaes input
         :param name: name of the LAmbda function to be updated
@@ -72,18 +84,12 @@ def lambda_handler(event, context):
         return response
 
     lambda_list = []
-    try:
-        # iterate over DynamoDB Stream data and store Lambda function names that have been updated into list
-        for record in event['Records']:
-            print("Event type: ", record['eventName'])
-            lambda_key = record["dynamodb"]["Keys"]["Lambda"]["S"]
-            lambda_list.append(lambda_key)
-    # boto3 error handling using ClientError and ParamValidationError errors.
-    except ClientError as e:
-        print("DynamoDB streams returned error: ", e.response['Error']['Message'])
-        raise e
-    except ParamValidationError as e:
-        raise ValueError(f'The parameters you provided are incorrect: {e}')
+
+    # iterate over DynamoDB Stream data and store Lambda function names that have been updated into list
+    for record in event['Records']:
+        print("Event type: ", record['eventName'])
+        lambda_key = record["dynamodb"]["Keys"]["Lambda"]["S"]
+        lambda_list.append(lambda_key)
 
     # iterate over list of Lambda function names and perform updates
     for lambda_id in lambda_list:

@@ -28,7 +28,23 @@ rows_inserted = "0"
 
 
 def lambda_handler(event, context):
+    def boto_safe_run(func):
+        """ decorator (higher order function) to handle errors using boto3 using ClientError and ParamValidationError error types
+        :param func: outer function to be passed to decorator
+        :return: executed inner function
+        """
+        def inner_function(*args, **kwargs):
+            # inner function that uses arguments of the outer function runs it applying error handling functionality
+            try:
+                return func(*args, *kwargs)
+            except ClientError as e:
+                print("AWS client returned error: ", e.response['Error']['Message'])
+                raise e
+            except ParamValidationError as e:
+                raise ValueError(f'The parameters you provided are incorrect: {e}')
+        return inner_function
     
+    @boto_safe_run
     def run_athena_query(client, query_string, db_name, output_path):
         """ function that handles Athena query execution. It does not finish until query status indicates that
         it has finished. It takes input
@@ -38,40 +54,24 @@ def lambda_handler(event, context):
         :param output_path: Athena output path
         :return: list of finished query execution indicators (query status, error message, execution id)
         """
-        try:
-            # start query execution
-            response_1 = client.start_query_execution(
-                QueryString=query_string,
-                QueryExecutionContext={
-                    'Database': db_name
-                },
-                ResultConfiguration={
-                    'OutputLocation': output_path
-                }
-            )
-        # boto3 error handling using ClientError and ParamValidationError errors.
-        except ClientError as e:
-            print("Athena client returned error: ", e.response['Error']['Message'])
-            raise e
-        except ParamValidationError as e:
-            raise ValueError(f'The parameters you provided are incorrect: {e}')
-            
+        # start query execution
+        response_1 = client.start_query_execution(
+            QueryString=query_string,
+            QueryExecutionContext={
+                'Database': db_name
+            },
+            ResultConfiguration={
+                'OutputLocation': output_path
+            }
+        )
         # get query execution id from execution response object
         execution_id = response_1['QueryExecutionId']
         status = 'RUNNING'
+        errors = "None"
         while (status == 'QUEUED') or (status == 'RUNNING'):
-            try:
-                # get current query execution status
-                response_2 = client.get_query_execution(QueryExecutionId=execution_id)
-            # boto3 error handling using ClientError and ParamValidationError errors.
-            except ClientError as e:
-                print("Athena client returned error: ", e.response['Error']['Message'])
-                raise e
-            except ParamValidationError as e:
-                raise ValueError(f'The parameters you provided are incorrect: {e}')
-                
+            # get current query execution status
+            response_2 = client.get_query_execution(QueryExecutionId=execution_id)
             status = response_2['QueryExecution']['Status']['State']
-            errors = "None"
 
         if status != 'SUCCEEDED':
             # handle query execution errors
@@ -79,9 +79,9 @@ def lambda_handler(event, context):
             errors = response_2['QueryExecution']['Status']['StateChangeReason']
             print("Athena query status: ", status, ", errors: ", errors)
             raise ClientError
-           
         return [status, errors, execution_id]
 
+    @boto_safe_run
     def get_athena_result(client, id, max_results):
         """ function that implements get_query_results() call to retrieve results of successfully executed Athena query.
          It requires input
@@ -91,16 +91,10 @@ def lambda_handler(event, context):
         :return: resulting data object of query execution
         """
         data = []
-        try:
-            response = client.get_query_results(QueryExecutionId=id, MaxResults=max_results)
-            data = response['ResultSet']['Rows']
-        # boto3 error handling using ClientError and ParamValidationError errors.
-        except ClientError as e:
-            print("Athena client returned error: ", e.response['Error']['Message'])
-            raise e
-        except ParamValidationError as e:
-            raise ValueError(f'The parameters you provided are incorrect: {e}')            
+        response = client.get_query_results(QueryExecutionId=id, MaxResults=max_results)
+        data = response['ResultSet']['Rows']
         return data
+
     # next three functions parse timestamp strings and return the required ts format, they are used to compile the output
     # record this Lambda function returns
     def get_year(x):
@@ -127,12 +121,10 @@ def lambda_handler(event, context):
         print("Query status: ", result_3[0], ", errors: ", result_3[1])
         if result_3[1] == "None":
             rows_inserted = row_count
-
     
     print("rows_inserted: ", rows_inserted)
 
     record_time = datetime.now(tz=timezone).strftime("%Y-%m-%d %H:%M:%S")
     out_record = f"'{record_time}', '{target_tbl}', {rows_inserted}, {get_year(record_time)}, {get_month(record_time)}, {get_day(record_time)}"
-
     # return indicators of data processing to be used by update-data-log Lambda.
     return out_record
