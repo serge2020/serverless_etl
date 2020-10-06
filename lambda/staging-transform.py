@@ -20,13 +20,12 @@ import pandas as pd
 import numpy as np
 import base64
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.parser import *
 import pytz
 from io import StringIO
 from textblob import TextBlob
 import re
-
 
 account_id = os.environ['ACCOUNT_ID']
 target_db = os.environ['TARGET_DB']
@@ -41,12 +40,14 @@ staging_file = os.environ['STAGING_FILE']
 timezone = pytz.timezone(os.environ['TIME_ZONE'])
 time_horizon = int(os.environ['TIME_HORIZONT_HRS'])
 
+
 def lambda_handler(event, context):
     def boto_safe_run(func):
         """ decorator (higher order function) to handle errors using boto3 using ClientError and ParamValidationError error types
         :param func: outer function to be passed to decorator
         :return: executed inner function
         """
+
         def inner_function(*args, **kwargs):
             # inner function that uses arguments of the outer function runs it applying error handling functionality
             try:
@@ -56,8 +57,9 @@ def lambda_handler(event, context):
                 raise e
             except ParamValidationError as e:
                 raise ValueError(f'The parameters you provided are incorrect: {e}')
+
         return inner_function
-    
+
     @boto_safe_run
     def get_glue_schema(client, id, db, table, partitioned):
         """ function that retrieves table schema information from Glue Catalog. It requires the following input
@@ -103,7 +105,8 @@ def lambda_handler(event, context):
         """
         keys_filtered = []
         # get unfiltered object list
-        from_hour = int(datetime.now(tz=tz).strftime("%H")) - t_horizon
+        ts_start = datetime.now(tz=tz) - timedelta(hours=t_horizon)
+        # from_hour = int(datetime.now(tz=tz).strftime("%H")) - t_horizon
         response = client.list_objects(
             Bucket=bucket,
             Prefix=prefix
@@ -112,15 +115,15 @@ def lambda_handler(event, context):
         # filter objects by LastModified timestamp data
         for ob in objs:
             modified = ob.get("LastModified")
-            hour = modified.astimezone(timezone).strftime('%H')
-            if int(hour) >= from_hour:
+            # hour = modified.astimezone(timezone).strftime('%H')
+            if modified >= ts_start:
                 name = ob.get("Key")
                 keys_filtered.append(name)
         return keys_filtered
 
     @boto_safe_run
     def load_from_s3(s3, bucket, file_keys, cols):
-        """ function that loads file objects from S3 using provided list of object keys and
+        """ funstion that loads file objects from S3 using provided list of object keys and
         saves them to a single Pandas dataframe
         :param s3: S3 client
         :param bucket: name of S3 bucket
@@ -138,18 +141,11 @@ def lambda_handler(event, context):
             df_list.append(df_single)
         # create resulting dataframe from the list of dataframes
         return pd.concat(df_list, axis=0, ignore_index=True)
-    
+
     @boto_safe_run
     def save_df_to_s3(df, s3_resource, bucket, filename):
-        """ function that saves contents of a dataframe to S3
-        :param df: source dataframe
-        :param s3_resource: S3 resource client
-        :param bucket: target bucket name
-        :param filename: target file key (name)
-        :return: None
-        """
-        csv_buffer = StringIO() # memory buffer to store dataframe data
-        df.to_csv(csv_buffer, header=False)
+        csv_buffer = StringIO()  # memory buffer to store dataframe data
+        df.to_csv(csv_buffer, header=False, index=False)
         s3_resource.Object(bucket, filename).put(Body=csv_buffer.getvalue())
 
     def clean_tweet(string):
@@ -159,7 +155,8 @@ def lambda_handler(event, context):
         :return: processed text string
         """
         # Using regular expression filtering clean text for url addresses, quotes, non alfanumeric Latin characters
-        string = re.sub(r"^(http\S+|ftp|file):\\/\\/[-a-zA-Z0-9+&@#\\/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#\\/%=~_|]", "", str(string), flags=re.MULTILINE)
+        string = re.sub(r"^(http\S+|ftp|file):\\/\\/[-a-zA-Z0-9+&@#\\/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#\\/%=~_|]", "",
+                        str(string), flags=re.MULTILINE)
         string = re.sub(r"\"", "", str(string), flags=re.MULTILINE)
         string = re.sub(r"https\S+", "", str(string), flags=re.MULTILINE)
         string = re.sub(r"RT", "", str(string), flags=re.MULTILINE)
@@ -167,7 +164,7 @@ def lambda_handler(event, context):
         string = re.sub(r"[^\u0000-\uFFFF]", "", str(string), flags=re.MULTILINE)
         string = re.sub(r"([^\w\s]+)", " ", str(string), flags=re.MULTILINE)
         # compile emoji-like symbol pattern
-        emoji_pattern = re.compile("["                               
+        emoji_pattern = re.compile("["
                                    u"\U0001F600-\U0001F64F"  # emoticons
                                    u"\U0001F300-\U0001F5FF"  # symbols & pictographs
                                    u"\U0001F680-\U0001F6FF"  # transport & map symbols
@@ -178,44 +175,44 @@ def lambda_handler(event, context):
         # filter emoji pattern and line breaks
         string = emoji_pattern.sub(r'', string).replace("\n", "")
         return string
-    
+
     # simple function that cleans hashtags from non-alphanumeric Latin characters
     def clean_hashtags(hashtag):
         hashtag = re.sub(r'([^A-Za-z0-9\s]+)', '', str(hashtag))
         return hashtag
-    
+
     # function that calculates sentiment and polarity of input text using TextBlob library tools
     def text_sentiment(text):
         sentiment = ' '.join(str(s) for s in TextBlob(text).sentiment)
         return sentiment
-    
+
     # function that generates hash key from the input string
     def generate_hash_key(x):
         return base64.b64encode(hashlib.sha1(x).digest())
-    
+
     # next four functions parse timestamp strings and return the required ts format, they are used in the dataframe
     # column mapping (.apply()) operations
     def get_year(x):
         parsed_date = parse(x)
         return parsed_date.year
-    
+
     def get_month(x):
         parsed_date = parse(x)
         return parsed_date.month
-    
+
     def get_day(x):
         parsed_date = parse(x)
         return parsed_date.day
-        
+
     def get_timestamp(date):
         parsed_date = parse(date).strftime('%Y-%m-%d %H:%M:%S')
         return parsed_date
-    
+
     # initiate AWS service clients
     s3 = boto3.resource('s3')
     s3_client = boto3.client("s3")
     g_client = boto3.client('glue')
-    
+
     record_time = datetime.now(tz=timezone).strftime("%Y-%m-%d")
 
     prefix_string = landing_path + \
@@ -243,20 +240,21 @@ def lambda_handler(event, context):
     _df = frame.explode('hashtag')
     _df.hashtag.replace('', np.nan, inplace=True)
     _df.dropna(subset=['hashtag'], inplace=True)
-    _df['hash_string'] = _df['record_id'] + _df['tweet_id']
-    # generate PK column
-    _df['hash_id'] = _df\
-        .hash_string.astype(str).str.encode('UTF-8')\
+    _df['hash_string'] = _df['record_id'] + _df['tweet_id'] + _df['hashtag']
+    # generate PK column and remove duplicates
+    _df['hash_id'] = _df \
+        .hash_string.astype(str).str.encode('UTF-8') \
         .apply(generate_hash_key).str.decode("utf-8")
+    _df = _df.drop_duplicates(subset=['hash_id'])
     # generate partition columns
     _df['year'] = _df.timestamp.apply(get_year)
     _df['month'] = _df.timestamp.apply(get_month)
     _df['day'] = _df.timestamp.apply(get_day)
 
     df = _df[new_cols].copy()
-    full_name = staging_path+staging_file+'_'+record_time+'.csv'
+    full_name = staging_path + staging_file + '_' + record_time + '.csv'
     save_df_to_s3(df, s3, bucket_name, full_name)
     count_row = df.shape[0]
     log_record = f"'{record_time}', '{target_db}.{target_table}', {count_row}, {get_year(record_time)}, {get_month(record_time)}, {get_day(record_time)}"
-
+    # return indicators of data processing to be used by update-data-log Lambda.
     return log_record
